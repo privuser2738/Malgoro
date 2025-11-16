@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Malgoro Desktop
+Comment=Classic desktop environment with modern robustness
+Exec=malgoro-session
+TryExec=malgoro-session
+Icon=malgoro-logo
+Type=Application
+DesktopNames=Malgoro
+X-Ubuntu-Gettext-Domain=malgoro-desktop

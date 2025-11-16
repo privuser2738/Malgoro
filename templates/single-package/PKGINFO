@@ -1,0 +1,6 @@
+name=my-package
+version=1.0.0
+description=Replace with your package description
+maintainer=Your Name <your.email@example.com>
+license=MIT
+depends=

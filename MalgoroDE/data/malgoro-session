@@ -1,0 +1,142 @@
+#!/bin/bash
+#
+# Malgoro Desktop Environment Session Startup Script
+#
+
+# Set environment
+export XDG_CURRENT_DESKTOP=Malgoro
+export DESKTOP_SESSION=malgoro
+
+# Configuration directory
+export MALGORO_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/malgoro"
+mkdir -p "$MALGORO_CONFIG_DIR"
+
+# Data directory
+export MALGORO_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/malgoro"
+mkdir -p "$MALGORO_DATA_DIR"
+
+# Cache directory
+export MALGORO_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/malgoro"
+mkdir -p "$MALGORO_CACHE_DIR"
+
+# Logging
+LOGFILE="$MALGORO_CACHE_DIR/session.log"
+exec > >(tee "$LOGFILE") 2>&1
+
+echo "Starting Malgoro Desktop Environment..."
+echo "Date: $(date)"
+echo "User: $USER"
+echo "Display: $DISPLAY"
+
+# Initialize default configuration if not exists
+if [ ! -f "$MALGORO_CONFIG_DIR/desktop.conf" ]; then
+    echo "Creating default configuration..."
+    cp -r /usr/share/malgoro/defaults/* "$MALGORO_CONFIG_DIR/" 2>/dev/null || true
+fi
+
+# Start D-Bus session bus if not running
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    echo "Starting D-Bus session bus..."
+    eval $(dbus-launch --sh-syntax --exit-with-session)
+fi
+
+# Set GTK settings
+export GTK_THEME=${MALGORO_GTK_THEME:-Malgoro-Classic}
+export GTK_ICON_THEME=${MALGORO_ICON_THEME:-Malgoro-Icons}
+
+# Start window manager
+echo "Starting window manager..."
+malgoro-wm &
+WM_PID=$!
+
+# Wait for window manager to be ready
+sleep 1
+
+# Start compositor (optional)
+if grep -q "enable_compositor=true" "$MALGORO_CONFIG_DIR/wm.conf" 2>/dev/null; then
+    echo "Starting compositor..."
+    picom &
+fi
+
+# Start panel
+echo "Starting panel..."
+malgoro-panel &
+PANEL_PID=$!
+
+# Start settings daemon (if exists)
+if command -v malgoro-settings-daemon &> /dev/null; then
+    echo "Starting settings daemon..."
+    malgoro-settings-daemon &
+fi
+
+# Start notification daemon (if exists)
+if command -v malgoro-notify-daemon &> /dev/null; then
+    echo "Starting notification daemon..."
+    malgoro-notify-daemon &
+elif command -v dunst &> /dev/null; then
+    echo "Starting dunst notification daemon..."
+    dunst &
+fi
+
+# Start power manager (if exists)
+if command -v xfce4-power-manager &> /dev/null; then
+    echo "Starting power manager..."
+    xfce4-power-manager &
+fi
+
+# Start network manager applet (if exists)
+if command -v nm-applet &> /dev/null; then
+    echo "Starting network manager applet..."
+    nm-applet &
+fi
+
+# Run autostart applications
+echo "Running autostart applications..."
+if [ -d "$MALGORO_CONFIG_DIR/autostart" ]; then
+    for desktop in "$MALGORO_CONFIG_DIR/autostart"/*.desktop; do
+        if [ -f "$desktop" ]; then
+            if grep -q "X-GNOME-Autostart-enabled=true" "$desktop" 2>/dev/null; then
+                EXEC=$(grep "^Exec=" "$desktop" | cut -d'=' -f2-)
+                echo "Starting: $EXEC"
+                eval "$EXEC" &
+            fi
+        fi
+    done
+fi
+
+# Also check system autostart
+if [ -d /etc/xdg/autostart ]; then
+    for desktop in /etc/xdg/autostart/*.desktop; do
+        if [ -f "$desktop" ]; then
+            if ! grep -q "OnlyShowIn" "$desktop" 2>/dev/null || grep -q "OnlyShowIn=.*Malgoro" "$desktop" 2>/dev/null; then
+                if ! grep -q "NotShowIn=.*Malgoro" "$desktop" 2>/dev/null; then
+                    EXEC=$(grep "^Exec=" "$desktop" | cut -d'=' -f2-)
+                    if [ -n "$EXEC" ]; then
+                        echo "Starting (system): $EXEC"
+                        eval "$EXEC" &
+                    fi
+                fi
+            fi
+        fi
+    done
+fi
+
+echo "Malgoro Desktop Environment started successfully!"
+echo "Window Manager PID: $WM_PID"
+echo "Panel PID: $PANEL_PID"
+
+# Wait for window manager to exit
+wait $WM_PID
+
+echo "Window manager exited, shutting down session..."
+
+# Kill panel and other components
+kill $PANEL_PID 2>/dev/null
+
+# Kill all processes started by this session
+killall malgoro-settings-daemon 2>/dev/null
+killall malgoro-notify-daemon 2>/dev/null
+killall picom 2>/dev/null
+
+echo "Malgoro Desktop Environment session ended."
+exit 0

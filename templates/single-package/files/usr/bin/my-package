@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+# Example application
+# Replace this with your actual application
+#
+
+echo "My Package - Version 1.0.0"
+echo "This is a template. Replace with your application logic."
+echo ""
+echo "Installation successful!"
